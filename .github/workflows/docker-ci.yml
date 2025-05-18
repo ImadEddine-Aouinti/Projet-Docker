@@ -11,13 +11,13 @@ jobs:
     runs-on: ubuntu-22.04
 
     steps:
-    - name: Cloner le dépôt
+    - name: Checkout du code
       uses: actions/checkout@v3
 
-    - name: Installer Docker Compose
+    - name: Mettre à jour apt et installer Docker Compose Plugin
       run: |
-        sudo apt-get update
-        sudo apt-get install docker-compose-plugin
+        sudo apt-get update -y
+        sudo apt-get install -y docker-compose-plugin
 
     - name: Vérifier Docker et Compose
       run: |
@@ -29,5 +29,5 @@ jobs:
         docker compose -f docker-compose.yml up -d --build
         docker ps
 
-    - name: Nettoyer
+    - name: Nettoyage
       run: docker compose down
