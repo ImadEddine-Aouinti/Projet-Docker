@@ -1,0 +1,27 @@
+name: CI/CD Pipeline Docker
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Cloner le dépôt
+      uses: actions/checkout@v3
+
+    - name: Installer Docker
+      uses: docker-practice/actions-setup-docker@v1
+
+    - name: Construire les services avec docker-compose
+      run: docker-compose -f docker-compose.yml up -d --build
+
+    - name: Vérifier que les containers tournent
+      run: docker ps
+
+    - name: Nettoyer les containers
+      run: docker-compose down
