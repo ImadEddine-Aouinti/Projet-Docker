@@ -8,20 +8,19 @@ on:
 
 jobs:
   build-and-test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04  
 
     steps:
     - name: Cloner le dépôt
       uses: actions/checkout@v3
 
-    - name: Installer Docker
-      uses: docker-practice/actions-setup-docker@v1
+    - name: Vérifier Docker
+      run: docker --version
 
-    - name: Construire les services avec docker-compose
-      run: docker-compose -f docker-compose.yml up -d --build
+    - name: Lancer docker-compose
+      run: |
+        docker-compose -f docker-compose.yml up -d --build
+        docker ps
 
-    - name: Vérifier que les containers tournent
-      run: docker ps
-
-    - name: Nettoyer les containers
+    - name: Nettoyer
       run: docker-compose down
