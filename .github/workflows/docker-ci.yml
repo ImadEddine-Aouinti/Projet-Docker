@@ -74,3 +74,22 @@ jobs:
           docker compose down || true
           docker compose up -d --build
           rm -f images.tar
+
+    - name: Sauvegarder les images Docker
+      run: |
+        mkdir -p docker-images
+        sudo chmod -R 777 docker-images  # Donne les permissions nécessaires
+        docker save $(docker compose -f docker-compose.yml config | awk '{if ($1 == "image:") print $2}') -o docker-images/images.tar
+        sudo chmod 644 docker-images/images.tar  # Ajuste les permissions du fichier    
+
+    - name: Transférer les fichiers vers le serveur
+      uses: appleboy/scp-action@v0.1.7
+      with:
+        host: ${{ secrets.SSH_HOST }}
+        username: ${{ secrets.SSH_USER }}
+        key: ${{ secrets.SSH_PRIVATE_KEY }}
+        source: "docker-images/images.tar,docker-compose.yml"
+        target: "/home/i.aouinti/app/"
+        strip_components: 1
+        overwrite: true
+        tar_tmp_path: "/tmp"  # Spécifie un répertoire temporaire accessible   
