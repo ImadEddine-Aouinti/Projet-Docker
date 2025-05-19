@@ -66,17 +66,21 @@ jobs:
         chmod -R 755 deploy-artifacts
 
     # Étape 7: Déploiement sur le serveur (uniquement sur main)
-    - name: Transférer les fichiers vers le serveur
-      if: github.ref == 'refs/heads/main'
+    - name: Transférer les fichiers
       uses: appleboy/scp-action@v0.1.7
+      env:
+        SSH_AUTH_SOCK: /tmp/ssh_agent.sock
       with:
         host: ${{ secrets.SSH_HOST }}
         username: ${{ secrets.SSH_USER }}
         key: ${{ secrets.SSH_PRIVATE_KEY }}
+        port: ${{ secrets.SSH_PORT || 22 }}
         source: "deploy-artifacts/*"
         target: "/home/i.aouinti/app/"
-        overwrite: true
-        tar_tmp_path: "/tmp"
+        timeout: 5m
+        command_timeout: 10m
+        use_insecure_cipher: false
+        fingerprint: ${{ secrets.SSH_FINGERPRINT }}
 
     - name: Déployer sur le serveur distant
       if: github.ref == 'refs/heads/main'
