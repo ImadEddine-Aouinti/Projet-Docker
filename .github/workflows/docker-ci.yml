@@ -42,3 +42,35 @@ jobs:
 
     - name: Arrêter et supprimer les conteneurs
       run: docker compose down
+
+    # Nouvelles étapes ajoutées pour le déploiement sur le serveur
+    - name: Sauvegarder les images Docker
+      if: github.ref == 'refs/heads/main'  # Exécuté seulement sur push vers main
+      run: |
+        mkdir -p docker-images
+        docker save $(docker compose -f docker-compose.yml config | awk '{if ($1 == "image:") print $2}') -o docker-images/images.tar
+
+    - name: Transférer les fichiers vers le serveur
+      uses: appleboy/scp-action@v0.1.7
+      if: github.ref == 'refs/heads/main'
+      with:
+        host: ${{ secrets.SSH_HOST }}
+        username: ${{ secrets.SSH_USER }}
+        key: ${{ secrets.SSH_PRIVATE_KEY }}
+        source: "docker-images/images.tar,docker-compose.yml"
+        target: "/home/i.aouinti/app/"
+        strip_components: 1
+
+    - name: Déployer sur le serveur distant
+      uses: appleboy/ssh-action@v1.0.0
+      if: github.ref == 'refs/heads/main'
+      with:
+        host: ${{ secrets.SSH_HOST }}
+        username: ${{ secrets.SSH_USER }}
+        key: ${{ secrets.SSH_PRIVATE_KEY }}
+        script: |
+          cd /home/i.aouinti/app
+          docker load -i images.tar
+          docker compose down || true
+          docker compose up -d --build
+          rm -f images.tar
