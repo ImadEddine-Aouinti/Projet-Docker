@@ -3,55 +3,42 @@ name: CI/CD Pipeline Docker
 on:
   push:
     branches: [ main ]
+  pull_request:
+    branches: [ main ]
 
 jobs:
-  build-and-deploy:
+  build-and-test:
     runs-on: ubuntu-latest
 
     steps:
     - name: Cloner le dépôt
       uses: actions/checkout@v3
 
-    # Build Java
     - name: Configurer Java 21
       uses: actions/setup-java@v3
       with:
         distribution: 'temurin'
         java-version: '21'
 
-    - name: Construire le projet Java avec Maven
-      run: mvn clean install -DskipTests -f app_web/pom.xml
+    - name: Afficher l'arborescence
+      run: ls -R
 
-    # Docker
+    - name: Construire le projet Java avec Maven
+      run: mvn install -DskipTests -f app_web/pom.xml
+
     - name: Configurer Docker Buildx
       uses: docker/setup-buildx-action@v3
 
-    - name: Construire les images Docker
-      run: docker compose -f docker-compose.yml build
-
-    - name: Sauvegarder les images Docker
+    - name: Afficher les versions Docker
       run: |
-        mkdir -p docker-images
-        docker save $(docker compose -f docker-compose.yml config | awk '{if ($1 == "image:") print $2}') -o docker-images/images.tar
+        docker --version
+        docker compose version
 
-    # Déploiement
-    - name: Transférer les fichiers via SCP
-      uses: appleboy/scp-action@v0.1.7
-      with:
-        host: ${{ secrets.SSH_HOST }}
-        username: ${{ secrets.SSH_USER }}
-        key: ${{ secrets.SSH_PRIVATE_KEY }}
-        source: "docker-images/images.tar,docker-compose.yml,app_web/target/app_web-0.0.1-SNAPSHOT.jar"
-        target: "/home/i.aouinti/app/"
+    - name: Construire et démarrer les conteneurs
+      run: docker compose -f docker-compose.yml up -d --build
 
-    - name: Déployer sur le serveur via SSH
-      uses: appleboy/ssh-action@v1.0.0
-      with:
-        host: ${{ secrets.SSH_HOST }}
-        username: ${{ secrets.SSH_USER }}
-        key: ${{ secrets.SSH_PRIVATE_KEY }}
-        script: |
-          cd /home/i.aouinti/app
-          docker load -i images.tar
-          docker compose down || true
-          docker compose up -d --build
+    - name: Lister les conteneurs
+      run: docker ps
+
+    - name: Arrêter et supprimer les conteneurs
+      run: docker compose down
