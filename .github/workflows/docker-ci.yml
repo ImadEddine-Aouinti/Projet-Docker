@@ -7,25 +7,26 @@ on:
     branches: [ main ]
 
 jobs:
-  build-and-test:
+  build-and-deploy:
     runs-on: ubuntu-latest
 
     steps:
+    # Étape 1: Checkout du code
     - name: Cloner le dépôt
       uses: actions/checkout@v3
 
+    # Étape 2: Configuration Java
     - name: Configurer Java 21
       uses: actions/setup-java@v3
       with:
         distribution: 'temurin'
         java-version: '21'
 
-    - name: Afficher l'arborescence
-      run: ls -R
+    # Étape 3: Build Maven
+    - name: Construire le projet avec Maven
+      run: mvn clean package -DskipTests -f app_web/pom.xml
 
-    - name: Construire le projet Java avec Maven
-      run: mvn install -DskipTests -f app_web/pom.xml
-
+    # Étape 4: Configuration Docker
     - name: Configurer Docker Buildx
       uses: docker/setup-buildx-action@v3
 
@@ -34,62 +35,66 @@ jobs:
         docker --version
         docker compose version
 
-    - name: Construire et démarrer les conteneurs
-      run: docker compose -f docker-compose.yml up -d --build
+    # Étape 5: Construction et test des conteneurs
+    - name: Construire les images Docker
+      run: docker compose -f docker-compose.yml build
 
-    - name: Lister les conteneurs
-      run: docker ps
+    - name: Démarrer les conteneurs pour test
+      run: docker compose -f docker-compose.yml up -d
 
-    - name: Arrêter et supprimer les conteneurs
-      run: docker compose down
+    - name: Vérifier les conteneurs
+      run: docker ps -a
 
-    # Nouvelles étapes ajoutées pour le déploiement sur le serveur
-    - name: Sauvegarder les images Docker
-      if: github.ref == 'refs/heads/main'  # Exécuté seulement sur push vers main
-      run: |
-        mkdir -p docker-images
-        docker save $(docker compose -f docker-compose.yml config | awk '{if ($1 == "image:") print $2}') -o docker-images/images.tar
+    - name: Arrêter les conteneurs de test
+      run: docker compose -f docker-compose.yml down
 
-    - name: Transférer les fichiers vers le serveur
-      uses: appleboy/scp-action@v0.1.7
+    # Étape 6: Préparation du déploiement (uniquement sur main)
+    - name: Préparer les artefacts de déploiement
       if: github.ref == 'refs/heads/main'
+      run: |
+        mkdir -p deploy-artifacts
+        # Sauvegarder les images Docker
+        IMAGES=$(docker compose -f docker-compose.yml config | awk '{if ($1 == "image:") print $2}')
+        for image in $IMAGES; do
+          echo "Sauvegarde de l'image $image"
+          docker save $image -o deploy-artifacts/$(echo $image | tr '/' '_' | tr ':' '_').tar
+        done
+        # Copier les fichiers nécessaires
+        cp docker-compose.yml deploy-artifacts/
+        cp app_web/target/*.jar deploy-artifacts/ || echo "Aucun fichier JAR à copier"
+        # Ajuster les permissions
+        chmod -R 755 deploy-artifacts
+
+    # Étape 7: Déploiement sur le serveur (uniquement sur main)
+    - name: Transférer les fichiers vers le serveur
+      if: github.ref == 'refs/heads/main'
+      uses: appleboy/scp-action@v0.1.7
       with:
         host: ${{ secrets.SSH_HOST }}
         username: ${{ secrets.SSH_USER }}
         key: ${{ secrets.SSH_PRIVATE_KEY }}
-        source: "docker-images/images.tar,docker-compose.yml"
+        source: "deploy-artifacts/*"
         target: "/home/i.aouinti/app/"
-        strip_components: 1
+        overwrite: true
+        tar_tmp_path: "/tmp"
 
     - name: Déployer sur le serveur distant
-      uses: appleboy/ssh-action@v1.0.0
       if: github.ref == 'refs/heads/main'
+      uses: appleboy/ssh-action@v1.0.0
       with:
         host: ${{ secrets.SSH_HOST }}
         username: ${{ secrets.SSH_USER }}
         key: ${{ secrets.SSH_PRIVATE_KEY }}
         script: |
           cd /home/i.aouinti/app
-          docker load -i images.tar
+          # Charger les images Docker
+          for f in *.tar; do
+            docker load -i $f
+          done
+          # Démarrer l'application
           docker compose down || true
           docker compose up -d --build
-          rm -f images.tar
-
-    - name: Sauvegarder les images Docker
-      run: |
-        mkdir -p docker-images
-        sudo chmod -R 777 docker-images  # Donne les permissions nécessaires
-        docker save $(docker compose -f docker-compose.yml config | awk '{if ($1 == "image:") print $2}') -o docker-images/images.tar
-        sudo chmod 644 docker-images/images.tar  # Ajuste les permissions du fichier    
-
-    - name: Transférer les fichiers vers le serveur
-      uses: appleboy/scp-action@v0.1.7
-      with:
-        host: ${{ secrets.SSH_HOST }}
-        username: ${{ secrets.SSH_USER }}
-        key: ${{ secrets.SSH_PRIVATE_KEY }}
-        source: "docker-images/images.tar,docker-compose.yml"
-        target: "/home/i.aouinti/app/"
-        strip_components: 1
-        overwrite: true
-        tar_tmp_path: "/tmp"  # Spécifie un répertoire temporaire accessible   
+          # Nettoyage
+          rm -f *.tar
+          echo "Déploiement terminé avec succès"
+          docker ps
